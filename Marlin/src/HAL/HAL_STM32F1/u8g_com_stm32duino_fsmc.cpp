@@ -1,6 +1,6 @@
 /**
  * Marlin 3D Printer Firmware
- * Copyright (C) 2019 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
+ * Copyright (C) 2016, 2017 MarlinFirmware [https://github.com/MarlinFirmware/Marlin]
  *
  * Based on Sprinter and grbl.
  * Copyright (C) 2011 Camiel Gubbels / Erik van der Zalm
@@ -28,25 +28,39 @@
 
 #include "../../inc/MarlinConfig.h"
 
-#if defined(ARDUINO_ARCH_STM32F1) && PIN_EXISTS(FSMC_CS) // FSMC on 100/144 pins SoCs
-
 #if HAS_GRAPHICAL_LCD
+#if defined(ARDUINO_ARCH_STM32F1) && (defined(STM32_HIGH_DENSITY) || defined(STM32_XL_DENSITY))
 
 #include "U8glib.h"
 #include "libmaple/fsmc.h"
 #include "libmaple/gpio.h"
+#include "libmaple/dma.h"
 #include "boards.h"
 
-#define LCD_READ_ID     0x04   /* Read display identification information */
+
+struct LCD_IO {
+  uint32_t id;
+  void (*writeRegister)(uint16_t reg);
+  uint16_t (*readData)(void);
+  void (*writeData)(uint16_t data);
+  void (*writeMultiple)(uint16_t data, uint32_t count);
+  void (*writeSequence)(uint16_t *data, uint16_t length);
+  void (*setWindow)(uint16_t Xmin, uint16_t Ymin, uint16_t Xmax, uint16_t Ymax);
+};
 
 /* Timing configuration */
 #define FSMC_ADDRESS_SETUP_TIME   15  // AddressSetupTime
 #define FSMC_DATA_SETUP_TIME      15  // DataSetupTime
 
+#define FSMC_DMA_DEV        DMA2
+#define FSMC_DMA_CHANNEL    DMA_CH4
+
 void LCD_IO_Init(uint8_t cs, uint8_t rs);
-void LCD_IO_WriteData(uint16_t RegValue);
-void LCD_IO_WriteReg(uint8_t Reg);
-uint32_t LCD_IO_ReadData(uint16_t RegValue, uint8_t ReadSize);
+void LCD_IO_WriteReg(uint16_t reg);
+uint16_t LCD_IO_ReadData(void);
+void LCD_IO_WriteData(uint16_t data);
+void LCD_IO_WriteMultiple(uint16_t data, uint32_t count);
+void LCD_IO_WriteSequence(uint16_t *data, uint16_t length);
 
 static uint8_t msgInitCount = 2; // Ignore all messages until 2nd U8G_COM_MSG_INIT
 
@@ -56,42 +70,30 @@ uint8_t u8g_com_stm32duino_fsmc_fn(u8g_t *u8g, uint8_t msg, uint8_t arg_val, voi
     if (msgInitCount) return -1;
   }
 
-  static uint8_t isCommand;
-
-  switch (msg) {
+  switch(msg) {
     case U8G_COM_MSG_STOP:
       break;
     case U8G_COM_MSG_INIT:
       u8g_SetPIOutput(u8g, U8G_PI_RESET);
 
+      dma_init(FSMC_DMA_DEV);
+      dma_disable(FSMC_DMA_DEV, FSMC_DMA_CHANNEL);
+      dma_set_priority(FSMC_DMA_DEV, FSMC_DMA_CHANNEL, DMA_PRIORITY_HIGH);
+
       LCD_IO_Init(u8g->pin_list[U8G_PI_CS], u8g->pin_list[U8G_PI_A0]);
       u8g_Delay(100);
 
-      if (arg_ptr != nullptr)
-        *((uint32_t *)arg_ptr) = LCD_IO_ReadData(LCD_READ_ID, 3);
-
-      isCommand = 0;
-      break;
-
-    case U8G_COM_MSG_ADDRESS:           // define cmd (arg_val = 0) or data mode (arg_val = 1)
-      isCommand = arg_val == 0 ? 1 : 0;
+      if (arg_ptr != NULL) {
+        ((LCD_IO *)arg_ptr)->writeRegister = LCD_IO_WriteReg;
+        ((LCD_IO *)arg_ptr)->readData = LCD_IO_ReadData;
+        ((LCD_IO *)arg_ptr)->writeData = LCD_IO_WriteData;
+        ((LCD_IO *)arg_ptr)->writeMultiple = LCD_IO_WriteMultiple;
+        ((LCD_IO *)arg_ptr)->writeSequence = LCD_IO_WriteSequence;
+      }
       break;
 
     case U8G_COM_MSG_RESET:
       u8g_SetPILevel(u8g, U8G_PI_RESET, arg_val);
-      break;
-
-    case U8G_COM_MSG_WRITE_BYTE:
-      if (isCommand)
-        LCD_IO_WriteReg(arg_val);
-      else
-        LCD_IO_WriteData((uint16_t)arg_val);
-      break;
-
-    case U8G_COM_MSG_WRITE_SEQ:
-
-      for (uint8_t i = 0; i < arg_val; i += 2)
-        LCD_IO_WriteData(*(uint16_t *)(((uint32_t)arg_ptr) + i));
       break;
   }
   return 1;
@@ -132,14 +134,14 @@ __attribute__((always_inline)) __STATIC_INLINE void __DSB(void) {
   #define FSMC_RS_A15 PG5
 #endif
 
-#define FSMC_RS_A16   PD11
-#define FSMC_RS_A17   PD12
-#define FSMC_RS_A18   PD13
-#define FSMC_RS_A19   PE3
-#define FSMC_RS_A20   PE4
-#define FSMC_RS_A21   PE5
-#define FSMC_RS_A22   PE6
-#define FSMC_RS_A23   PE2
+#define FSMC_RS_A16  PD11
+#define FSMC_RS_A17  PD12
+#define FSMC_RS_A18  PD13
+#define FSMC_RS_A19  PE3
+#define FSMC_RS_A20  PE4
+#define FSMC_RS_A21  PE5
+#define FSMC_RS_A22  PE6
+#define FSMC_RS_A23  PE2
 
 #ifdef STM32_XL_DENSITY
   #define FSMC_RS_A24 PG13
@@ -161,7 +163,7 @@ void LCD_IO_Init(uint8_t cs, uint8_t rs) {
   if (fsmcInit) return;
   fsmcInit = 1;
 
-  switch (cs) {
+  switch(cs) {
     case FSMC_CS_NE1: controllerAddress = (uint32_t)FSMC_NOR_PSRAM_REGION1; break;
     #ifdef STM32_XL_DENSITY
       case FSMC_CS_NE2: controllerAddress = (uint32_t)FSMC_NOR_PSRAM_REGION2; break;
@@ -173,7 +175,7 @@ void LCD_IO_Init(uint8_t cs, uint8_t rs) {
 
   #define _ORADDR(N) controllerAddress |= (_BV32(N) - 2)
 
-  switch (rs) {
+  switch(rs) {
     #ifdef STM32_XL_DENSITY
       case FSMC_RS_A0:  _ORADDR( 1); break;
       case FSMC_RS_A1:  _ORADDR( 2); break;
@@ -226,50 +228,57 @@ void LCD_IO_Init(uint8_t cs, uint8_t rs) {
   gpio_set_mode(GPIOD,  9, GPIO_AF_OUTPUT_PP);  // FSMC_D14
   gpio_set_mode(GPIOD, 10, GPIO_AF_OUTPUT_PP);  // FSMC_D15
 
-  gpio_set_mode(GPIOD,  4, GPIO_AF_OUTPUT_PP);  // FSMC_NOE
-  gpio_set_mode(GPIOD,  5, GPIO_AF_OUTPUT_PP);  // FSMC_NWE
+  gpio_set_mode(GPIOD,  4, GPIO_AF_OUTPUT_PP);   // FSMC_NOE
+  gpio_set_mode(GPIOD,  5, GPIO_AF_OUTPUT_PP);   // FSMC_NWE
 
   gpio_set_mode(PIN_MAP[cs].gpio_device, PIN_MAP[cs].gpio_bit, GPIO_AF_OUTPUT_PP);  //FSMC_CS_NEx
   gpio_set_mode(PIN_MAP[rs].gpio_device, PIN_MAP[rs].gpio_bit, GPIO_AF_OUTPUT_PP);  //FSMC_RS_Ax
 
-  #ifdef STM32_XL_DENSITY
-    FSMC_NOR_PSRAM4_BASE->BCR = FSMC_BCR_WREN | FSMC_BCR_MTYP_SRAM | FSMC_BCR_MWID_16BITS | FSMC_BCR_MBKEN;
-    FSMC_NOR_PSRAM4_BASE->BTR = (FSMC_DATA_SETUP_TIME << 8) | FSMC_ADDRESS_SETUP_TIME;
-  #else // PSRAM1 for STM32F103V (high density)
-    FSMC_NOR_PSRAM1_BASE->BCR = FSMC_BCR_WREN | FSMC_BCR_MTYP_SRAM | FSMC_BCR_MWID_16BITS | FSMC_BCR_MBKEN;
-    FSMC_NOR_PSRAM1_BASE->BTR = (FSMC_DATA_SETUP_TIME << 8) | FSMC_ADDRESS_SETUP_TIME;
-  #endif
+  FSMC_NOR_PSRAM4_BASE->BCR = FSMC_BCR_WREN | FSMC_BCR_MTYP_SRAM | FSMC_BCR_MWID_16BITS | FSMC_BCR_MBKEN;
+  FSMC_NOR_PSRAM4_BASE->BTR = (FSMC_DATA_SETUP_TIME << 8) | FSMC_ADDRESS_SETUP_TIME;
 
   afio_remap(AFIO_REMAP_FSMC_NADV);
 
   LCD = (LCD_CONTROLLER_TypeDef*)controllerAddress;
 }
 
-void LCD_IO_WriteData(uint16_t RegValue) {
-  LCD->RAM = RegValue;
+void LCD_IO_WriteReg(uint16_t reg) {
+	LCD->REG = reg;
+	__DSB();
+}
+
+uint16_t LCD_IO_ReadData(void) {
+	return LCD->RAM;
+}
+
+void LCD_IO_WriteData(uint16_t data) {
+  LCD->RAM = data;
   __DSB();
 }
 
-void LCD_IO_WriteReg(uint8_t Reg) {
-  LCD->REG = (uint16_t)Reg;
-  __DSB();
-}
+void LCD_IO_WriteMultiple(uint16_t data, uint32_t count) {
+  while (count > 0) {
+    dma_setup_transfer(FSMC_DMA_DEV, FSMC_DMA_CHANNEL, &data, DMA_SIZE_16BITS, &LCD->RAM, DMA_SIZE_16BITS, DMA_MEM_2_MEM);
+    dma_set_num_transfers(FSMC_DMA_DEV, FSMC_DMA_CHANNEL, count > 65535 ? 65535 : count);
+    dma_clear_isr_bits(FSMC_DMA_DEV, FSMC_DMA_CHANNEL);
+    dma_enable(FSMC_DMA_DEV, FSMC_DMA_CHANNEL);
 
-uint32_t LCD_IO_ReadData(uint16_t RegValue, uint8_t ReadSize) {
-  volatile uint32_t data;
-  LCD->REG = (uint16_t)RegValue;
-  __DSB();
+    while ((dma_get_isr_bits(FSMC_DMA_DEV, FSMC_DMA_CHANNEL) & 0x0A) == 0) {};
+    dma_disable(FSMC_DMA_DEV, FSMC_DMA_CHANNEL);
 
-  data = LCD->RAM; // dummy read
-  data = LCD->RAM & 0x00FF;
-
-  while (--ReadSize) {
-    data <<= 8;
-    data |= (LCD->RAM & 0x00FF);
+    count = count > 65535 ? count - 65535 : 0;
   }
-  return (uint32_t)data;
 }
 
-#endif // HAS_GRAPHICAL_LCD
+void LCD_IO_WriteSequence(uint16_t *data, uint16_t length) {
+  dma_setup_transfer(FSMC_DMA_DEV, FSMC_DMA_CHANNEL, data, DMA_SIZE_16BITS, &LCD->RAM, DMA_SIZE_16BITS, DMA_MEM_2_MEM | DMA_PINC_MODE);
+  dma_set_num_transfers(FSMC_DMA_DEV, FSMC_DMA_CHANNEL, length);
+  dma_clear_isr_bits(FSMC_DMA_DEV, FSMC_DMA_CHANNEL);
+  dma_enable(FSMC_DMA_DEV, FSMC_DMA_CHANNEL);
 
-#endif // ARDUINO_ARCH_STM32F1 && FSMC_CS_PIN
+  while ((dma_get_isr_bits(FSMC_DMA_DEV, FSMC_DMA_CHANNEL) & 0x0A) == 0) {};
+  dma_disable(FSMC_DMA_DEV, FSMC_DMA_CHANNEL);
+}
+
+#endif // ARDUINO_ARCH_STM32F1 && (STM32_HIGH_DENSITY || STM32_XL_DENSITY)
+#endif // HAS_GRAPHICAL_LCD

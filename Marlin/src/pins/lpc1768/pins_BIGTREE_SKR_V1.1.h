@@ -31,11 +31,11 @@
 // Limit Switches
 //
 #define X_MIN_PIN          P1_29
-#define X_MAX_PIN          P1_28
+//#define X_MAX_PIN          P1_28
 #define Y_MIN_PIN          P1_27
-#define Y_MAX_PIN          P1_26
+//#define Y_MAX_PIN          P1_26
 #define Z_MIN_PIN          P1_25
-#define Z_MAX_PIN          P1_24
+//#define Z_MAX_PIN          P1_24
 
 //
 // Steppers
@@ -52,13 +52,13 @@
 #define Z_DIR_PIN          P0_21
 #define Z_ENABLE_PIN       P0_19
 
-#define E0_STEP_PIN        P0_11
-#define E0_DIR_PIN         P2_13
-#define E0_ENABLE_PIN      P2_12
+//#define E0_STEP_PIN        P0_11
+//#define E0_DIR_PIN         P2_13
+//#define E0_ENABLE_PIN      P2_12
 
-#define E1_STEP_PIN        P0_01
-#define E1_DIR_PIN         P0_00
-#define E1_ENABLE_PIN      P0_10
+#define E0_STEP_PIN        P0_01
+#define E0_DIR_PIN         P0_00
+#define E0_ENABLE_PIN      P0_10
 
 //
 // Temperature Sensors
@@ -80,6 +80,21 @@
 #define FAN_PIN            P2_03
 #define HEATER_BED_PIN     P2_05
 
+#define X_SERIAL_RX_PIN P2_11
+#define X_SERIAL_TX_PIN P1_28
+
+#define Y_SERIAL_RX_PIN P2_12
+#define Y_SERIAL_TX_PIN P0_17
+
+#define E0_SERIAL_RX_PIN P0_11
+#define E0_SERIAL_TX_PIN P2_06
+
+#define Z_SERIAL_RX_PIN P2_13
+#define Z_SERIAL_TX_PIN P1_26
+
+#define SERVO0_PIN P1_28
+
+
 /**
  * LCD / Controller
  *
@@ -97,7 +112,7 @@
   #define BEEPER_PIN       P1_30
   #define BTN_EN1          P3_26
   #define BTN_EN2          P3_25
-  #define BTN_ENC          P2_11
+  #define BTN_ENC          P1_31
 
   #define SD_DETECT_PIN    P1_31
   #define LCD_SDSS         P1_23

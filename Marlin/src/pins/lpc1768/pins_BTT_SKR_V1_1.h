@@ -27,11 +27,11 @@
 // Limit Switches
 //
 #define X_MIN_PIN                          P1_29
-#define X_MAX_PIN                          P1_28
+//#define X_MAX_PIN                          P1_28
 #define Y_MIN_PIN                          P1_27
-#define Y_MAX_PIN                          P1_26
+//#define Y_MAX_PIN                          P1_26
 #define Z_MIN_PIN                          P1_25
-#define Z_MAX_PIN                          P1_24
+//#define Z_MAX_PIN                          P1_24
 
 //
 // Steppers
@@ -48,9 +48,35 @@
 #define Z_DIR_PIN                          P0_21
 #define Z_ENABLE_PIN                       P0_19
 
-#define E0_STEP_PIN                        P0_11
-#define E0_DIR_PIN                         P2_13
-#define E0_ENABLE_PIN                      P2_12
+// #define E0_STEP_PIN                        P0_11
+// #define E0_DIR_PIN                         P2_13
+// #define E0_ENABLE_PIN                      P2_12
+
+#define E0_STEP_PIN                        P0_01
+#define E0_DIR_PIN                         P0_00
+#define E0_ENABLE_PIN                      P0_10
+
+// #define X_SERIAL_RX_PIN P2_11
+// #define X_SERIAL_TX_PIN P1_28
+
+//#define X_SERIAL_RX_PIN P0_11
+//#define X_SERIAL_TX_PIN P2_06
+
+#define X_CS_PIN P2_06
+#define Y_CS_PIN P0_17
+#define Z_CS_PIN P1_26
+#define E0_CS_PIN P1_23
+
+//#define Y_SERIAL_RX_PIN P2_12
+//#define Y_SERIAL_TX_PIN P0_17
+
+// #define E0_SERIAL_RX_PIN P0_11
+// #define E0_SERIAL_TX_PIN P2_06
+
+//#define Z_SERIAL_RX_PIN P2_13
+//#define Z_SERIAL_TX_PIN P1_26
+
+#define SERVO0_PIN P1_28
 
 
 /**
@@ -106,7 +132,7 @@
 
   #define BTN_EN1                    EXP2_08_PIN
   #define BTN_EN2                    EXP2_06_PIN
-  #define BTN_ENC                    EXP1_09_PIN
+  #define BTN_ENC                    EXP2_04_PIN
 
   #define LCD_SDSS                   EXP2_07_PIN
   #define LCD_PINS_RS                EXP1_07_PIN
@@ -164,10 +190,10 @@
   // When using any TMC SPI-based drivers, software SPI is used
   // because pins may be shared with the display or SD card.
   #define TMC_USE_SW_SPI
-  #define TMC_SW_MOSI                EXP2_05_PIN
-  #define TMC_SW_MISO                EXP2_10_PIN
+  #define TMC_SW_MOSI                P0_11
+  #define TMC_SW_MISO                P2_13
   // To minimize pin usage use the same clock pin as the display/SD card reader. (May generate LCD noise.)
-  #define TMC_SW_SCK                 EXP2_09_PIN
+  #define TMC_SW_SCK                 P2_12
   // If pin 2_06 is unused, it can be used for the clock to avoid the LCD noise.
   //#define TMC_SW_SCK                     P2_06
 
